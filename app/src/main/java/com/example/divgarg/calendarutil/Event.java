@@ -9,6 +9,14 @@ public class Event {
 
     private String title;
 
+    public Event() {
+    }
+
+    public Event(Long eventId, String title) {
+        this.eventId = eventId;
+        this.title = title;
+    }
+
     public Long getEventId() {
         return eventId;
     }

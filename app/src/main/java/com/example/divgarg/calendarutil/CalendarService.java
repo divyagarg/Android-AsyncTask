@@ -103,10 +103,7 @@ public class CalendarService {
             return null;
         }
         if (eventCursor.moveToNext()) {
-            event = new Event();
-            event.setEventId(eventCursor.getLong(PROJECTION_EVENT_ID_INDEX));
-            event.setTitle(eventCursor.getString(PROJECTION_EVENT_TITLE_INDEX));
-
+            event = new Event(eventCursor.getLong(PROJECTION_EVENT_ID_INDEX), eventCursor.getString(PROJECTION_EVENT_TITLE_INDEX));
         }
         return event;
     }

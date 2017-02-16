@@ -3,12 +3,10 @@ package com.example.divgarg.calendarutil;
 import android.Manifest;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.app.LoaderManager;
-import android.support.v4.content.AsyncTaskLoader;
 import android.support.v4.content.ContextCompat;
-import android.support.v4.content.Loader;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -23,104 +21,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int CALENDAR_EVENT_LOADER = 22;
-    private static final int CALENDAR_EVENT_ATTENDEES_LOADER = 23;
     private ProgressBar mLoadingIndicator;
-    LoaderManager loaderManager;
-
-    private LoaderManager.LoaderCallbacks<List<Event>> eventsLoaderListener = new LoaderManager.LoaderCallbacks<List<Event>>() {
-
-        @Override
-        public Loader<List<Event>> onCreateLoader(int id, Bundle args) {
-            Log.v("eventsLoaderListener", "In Create Loader");
-            return new AsyncTaskLoader<List<Event>>(getApplicationContext()) {
-
-                @Override
-                protected void onStartLoading() {
-                    Log.v("eventsLoaderListener", "On start loading");
-                    mLoadingIndicator.setVisibility(View.VISIBLE);
-                    forceLoad();
-                }
-
-                @Override
-                public List<Event> loadInBackground() {
-                    Log.v("eventsLoaderListener", "Loading in background");
-                    List<Event> eventList = CalendarService.readCalendar(getApplicationContext());
-                    return eventList;
-                }
-            };
-
-        }
-
-        @Override
-        public void onLoadFinished(Loader<List<Event>> loader, List<Event> data) {
-            Log.v("eventsLoaderListener", "On Load finished");
-            mLoadingIndicator.setVisibility(View.INVISIBLE);
-
-            if (data != null && data.size() > 0) {
-                createPopUp(data);
-                //stopLoader(CALENDAR_EVENT_LOADER);
-            } else {
-                Log.v("eventsLoaderListener", "Data is null");
-                return;
-            }
-            return;
-        }
-
-        @Override
-        public void onLoaderReset(Loader<List<Event>> loader) {
-            Log.v("eventsLoaderListener", "On Load Reset");
-        }
-    };
-
-
-    private LoaderManager.LoaderCallbacks<Mail> eventAttendeesLoaderListener = new LoaderManager.LoaderCallbacks<Mail>() {
-        @Override
-        public Loader<Mail> onCreateLoader(int id, final Bundle args) {
-            Log.v("eventAttendees", "Inside onCreateLoader");
-            return new AsyncTaskLoader<Mail>(getApplicationContext()) {
-
-
-                @Override
-                protected void onStartLoading() {
-                    Log.v("eventAttendees", "On start loading");
-
-                    mLoadingIndicator.setVisibility(View.VISIBLE);
-                    forceLoad();
-                }
-
-                @Override
-                public Mail loadInBackground() {
-                    Log.v("eventAttendees", "Loading Attendees in background");
-                    Long eventId = args.getLong("eventId");
-                    String title = args.getString("title");
-                    HashSet<EventAttendee> eventAttendees = CalendarService.getEventAttendees(getApplicationContext(), eventId);
-                    List<String> attendeeEmail = new ArrayList<>();
-                    for (EventAttendee attendee : eventAttendees) {
-                        Log.v("ATTENDEE EMAIL", attendee.getAttendeeEmail());
-                        attendeeEmail.add(attendee.getAttendeeEmail());
-                    }
-                    Mail mail = new Mail(title, attendeeEmail);
-                    //Toast.makeText(getApplicationContext(), "Email will be sent", Toast.LENGTH_SHORT).show();
-                    return mail;
-                }
-            };
-
-        }
-
-        @Override
-        public void onLoadFinished(Loader<Mail> loader, Mail data) {
-            Log.v("eventAttendees", "Inside onLoadFinished");
-            mLoadingIndicator.setVisibility(View.INVISIBLE);
-            sendEmail(data);
-        }
-
-        @Override
-        public void onLoaderReset(Loader<Mail> loader) {
-            Log.v("eventAttendees", "OnLoaderReset");
-        }
-    };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -129,46 +30,19 @@ public class MainActivity extends AppCompatActivity {
         Button qry = (Button) findViewById(R.id.button);
         mLoadingIndicator = (ProgressBar) findViewById(R.id.pb_loading_indicator);
 
-
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_CALENDAR}, 1);
         }
-//        getSupportLoaderManager().initLoader(CALENDAR_EVENT_LOADER, null, eventsLoaderListener);
-//        getSupportLoaderManager().initLoader(CALENDAR_EVENT_ATTENDEES_LOADER, null, eventAttendeesLoaderListener);
 
         qry.setOnClickListener(new View.OnClickListener() {
 
             @Override
             public void onClick(View v) {
-                loadEventLoader();
+                new FetchCalendarEventsTask().execute();
             }
         });
     }
 
-    private void loadEventLoader() {
-        loaderManager = getSupportLoaderManager();
-        Loader<List<Event>> loader = loaderManager.getLoader(CALENDAR_EVENT_LOADER);
-        if (loader == null) {
-            loaderManager.initLoader(CALENDAR_EVENT_LOADER, null, eventsLoaderListener);
-        } else {
-            loaderManager.restartLoader(CALENDAR_EVENT_LOADER, null, eventsLoaderListener);
-        }
-
-    }
-
-    private void loadEventAttendeeLoader(Long eventId, String title) {
-
-        loaderManager = getSupportLoaderManager();
-        Loader<Mail> loader = loaderManager.getLoader(CALENDAR_EVENT_ATTENDEES_LOADER);
-        Bundle args = new Bundle(2);
-        args.putLong("eventId", eventId);
-        args.putString("title", title);
-        if (loader == null) {
-            loaderManager.initLoader(CALENDAR_EVENT_ATTENDEES_LOADER, args, eventAttendeesLoaderListener);
-        } else {
-            loaderManager.restartLoader(CALENDAR_EVENT_ATTENDEES_LOADER, args, eventAttendeesLoaderListener);
-        }
-    }
 
 
     private void createPopUp(final List<Event> events) {
@@ -190,7 +64,8 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onClick(DialogInterface dialog, int position) {
                         Toast.makeText(getApplicationContext(), titles[position] + "Event Id: " + eventIds[position], Toast.LENGTH_SHORT).show();
-                        loadEventAttendeeLoader(eventIds[position], titles[position]);
+                        Event e = new Event(eventIds[position], titles[position]);
+                        new FetchEventAttendeesEmailsTask().execute(e);
                         dialog.dismiss();
                     }
                 })
@@ -204,9 +79,75 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void sendEmail(Mail email) {
+    protected void sendEmail(Mail email) {
         Log.v("Send EMail", email.getSubject());
     }
 
+
+    private class FetchCalendarEventsTask extends AsyncTask<Void , Void, List<Event>>{
+        String TAG = "FetchCalendarEventsTask";
+        @Override
+        protected  List<Event> doInBackground(Void... params) {
+            Log.v(TAG, "doInBackground");
+            List<Event> eventList = CalendarService.readCalendar(getApplicationContext());
+            return eventList;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            Log.v(TAG, "onPreExecute");
+            mLoadingIndicator.setVisibility(View.VISIBLE);
+        }
+
+        @Override
+        protected void onPostExecute( List<Event> eventList) {
+            super.onPostExecute(eventList);
+            Log.v(TAG, "onPostExecute");
+            mLoadingIndicator.setVisibility(View.INVISIBLE);
+            if (eventList != null && eventList.size() > 0) {
+                createPopUp(eventList);
+            } else {
+                Log.v(TAG, "Data is null");
+                return;
+            }
+        }
+
+    }
+
+    private class FetchEventAttendeesEmailsTask extends AsyncTask<Event, Void, Mail>{
+        String TAG = "FetchAttendeesEmails";
+
+        @Override
+        protected Mail doInBackground(Event... params) {
+            Log.v(TAG, "doInBackground");
+            Event selectedEvent = params[0];
+            HashSet<EventAttendee> eventAttendees = CalendarService.getEventAttendees(getApplicationContext(), selectedEvent.getEventId());
+            List<String> attendeeEmail = new ArrayList<>();
+            for (EventAttendee attendee : eventAttendees) {
+                Log.v(TAG, attendee.getAttendeeEmail());
+                attendeeEmail.add(attendee.getAttendeeEmail());
+            }
+            Mail mail = new Mail(selectedEvent.getTitle(), attendeeEmail);
+            return mail;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            Log.v(TAG, "onPreExecute");
+            mLoadingIndicator.setVisibility(View.VISIBLE);
+        }
+
+        @Override
+        protected void onPostExecute(Mail mail) {
+            super.onPostExecute(mail);
+            Log.v(TAG, "onPostExecute");
+            mLoadingIndicator.setVisibility(View.INVISIBLE);
+            Toast.makeText(getApplicationContext(), "Sending email", Toast.LENGTH_LONG).show();
+            sendEmail(mail);
+        }
+
+    }
 
 }
